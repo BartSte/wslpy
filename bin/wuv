@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: wuv [options] <uv-args>
+
+Run Windows uv.exe from WSL and force a specific project venv. wuv depends on
+wpy.
+
+Environment variables:
+  WPY               Used by wpy
+  WVENV             Path to desired venv (Linux or Windows path)
+  WUV_CONFIG_FILE   Optional uv config file (Linux or Windows path)
+
+
+Options:
+  --wuv-help   Show help and exit
+  --wuv-debug  Log debug to stderr
+EOF
+}
+
+# --- flags ---
+debug=/dev/null
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --wuv-help)
+        usage
+        exit 0
+        ;;
+    --wuv-debug) debug=/dev/stderr ;;
+    *) args+=("$1") ;;
+    esac
+    shift
+done
+
+# --- guards ---
+if ! grep -qi microsoft /proc/version 2>/dev/null; then
+    echo "Not running in WSL" >"$debug"
+    exit 1
+fi
+
+# --- helpers ---
+is_win_path() { [[ "$1" =~ ^([A-Za-z]:\\|\\\\) ]]; }
+
+to_win_path() {
+    # return when $p is empty
+    local p="${1:-}"
+    [[ -z "$p" ]] && return
+    if is_win_path "$p"; then
+        printf '%s' "$p"
+    else
+        wslpath -w -- "$p"
+    fi
+}
+
+find_powershell() {
+    local ps
+    if ps=$(command -v pwsh.exe 2>/dev/null); then
+        printf '%s\n' "$ps"
+        return 0
+    fi
+    if ps=$(command -v powershell.exe 2>/dev/null); then
+        printf '%s\n' "$ps"
+        return 0
+    fi
+
+    local candidate
+    local candidates=(
+        "/mnt/c/Program Files/PowerShell/7/pwsh.exe"
+        "/mnt/c/Program Files/PowerShell/7-preview/pwsh.exe"
+        "/mnt/c/Program Files (x86)/PowerShell/7/pwsh.exe"
+        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+        "/mnt/c/Windows/System32/powershell.exe"
+    )
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+ps_quote() {
+    # PowerShell single-quote escape: ' -> ''
+    local s="$1"
+    s="${s//\'/\'}" # bash replace doesn't handle backrefs; this doubles quotes
+    printf "'%s'" "$s"
+}
+
+# --- resolve paths ---
+venv_win=$(to_win_path "${WVENV:-}")
+python_win=$(to_win_path $(wpy --wpy-path))
+config_win=$(to_win_path "${WUV_CONFIG_FILE:-${UV_CONFIG_FILE:-}}")
+if ! powershell=$(find_powershell); then
+    echo "Unable to locate powershell.exe or pwsh.exe" >&2
+    exit 1
+fi
+
+# --- build command string for PowerShell ---
+ps=()
+ps+=("\$env:UV_CONFIG_FILE=\"$config_win\";")
+ps+=("\$env:UV_PROJECT_ENVIRONMENT=\"${venv_win}\";")
+ps+=("\$env:UV_PYTHON=\"${python_win}\";")
+ps+=("& uv")
+for a in "${args[@]}"; do ps+=("$(ps_quote "$a")"); done
+ps_cmd="${ps[*]}"
+
+echo "venv_win: $venv_win" >"$debug"
+[[ -n "$config_win" ]] && echo "config_win: $config_win" >"$debug"
+echo "powershell: $powershell" >"$debug"
+echo "pwsh cmd: $ps_cmd" >"$debug"
+
+# --- execute ---
+exec "$powershell" -NoProfile -Command "$ps_cmd"

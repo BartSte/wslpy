@@ -1,0 +1,30 @@
+#/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: uninstall [PREFIX]
+
+Remove wpy and wuv from PREFIX/bin. Defaults to $HOME/.local/bin.
+EOF
+}
+
+if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+prefix="${1:-"$HOME/.local"}"
+bindir="$prefix/bin"
+
+for tool in wpy wuv; do
+    target="$bindir/$tool"
+    if [[ -e "$target" ]]; then
+        rm -f "$target"
+        echo "Removed $target"
+    else
+        echo "Skipped $target (not found)"
+    fi
+done
+
+echo "Finished uninstalling wpy and wuv from $bindir"

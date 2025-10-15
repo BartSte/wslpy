@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: install.sh [PREFIX]
+
+Install wpy and wuv into PREFIX/bin. Defaults to $HOME/.local/bin.
+EOF
+}
+
+if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+prefix="${1:-"$HOME/.local"}"
+bindir="$prefix/bin"
+
+install -d "$bindir"
+install -m 755 bin/wpy "$bindir/wpy"
+install -m 755 bin/wuv "$bindir/wuv"
+
+echo "Installed wpy and wuv to $bindir"
+echo "Ensure $bindir is on your PATH."
