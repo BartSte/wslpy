@@ -10,8 +10,8 @@
 # Variables:
 #   WINDOWS_HOME_DIR        – Must be defined before calling this script.
 #   WINDOWS_VENV_DIR        - Must be defined before calling this script
-#   WINVENV                 – Path to the Python virtual environment for the current project.
-#   WINPY                   – Path to the Python executable inside the virtual environment.
+#   WVENV                   – Path to the Python virtual environment for the current project.
+#   WPY                     – Path to the Python executable inside the virtual environment.
 #
 
 # Get the current directory name (used as the project name)
@@ -34,6 +34,5 @@ if [ -z "$WINDOWS_VENV_DIR" ]; then
 fi
 
 # Define the virtual environment and Python executable paths
-export WINVENV="$WINDOWS_VENV_DIR/$name"
-export WINPY="$WINVENV/Scripts/python.exe"
+export WVENV="$WINDOWS_VENV_DIR/$name"
 export WPY="$WINVENV/Scripts/python.exe"
