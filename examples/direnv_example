@@ -1,0 +1,23 @@
+
+# ---------------------------------------------------------------------------
+# .envrc_example
+#
+# Example environment setup file for use with `direnv`.
+# Copy this file to `.envrc` in your project directory and run:
+#     direnv allow
+#
+# Purpose:
+#   This script ensures your development environment is correctly initialized
+#   by sourcing your Windows/WSL virtual environment setup script.
+#
+# Notes:
+#   - The script `~/bin/winvenv.sh` should exist and be executable.
+#   - It is expected to configure environment variables or activate a
+#     Python virtual environment that integrates with Windows.
+#   - You can customize the sourced script or add additional exports
+#     below to fit your project needs.
+# ---------------------------------------------------------------------------
+
+# Source your Windows virtual environment setup script.
+# This makes its environment variables available in the current shell.
+source ~/bin/setup_wpy.sh

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Run a Python file as a module using the `wpy` tool.
+#
+# USAGE:
+#   run_as_module.sh <path/to/script.py>
+#
+# DESCRIPTION:
+#   This script takes a Python file path, converts it to a module path
+#   (replacing slashes `/` with dots `.` and removing the `.py` extension),
+#   and runs it as a Python module using `wpy -m`.
+#
+# EXAMPLES:
+#   ./run_as_module.sh scripts/utils/test_script.py
+#       → wpy -m scripts.utils.test_script
+#
+#   ./run_as_module.sh main.py
+#       → wpy -m main
+#
+# OPTIONS:
+#   --help      Show this help message and exit.
+#
+
+if [[ "$1" == "--help" || -z "$1" ]]; then
+  cat <<EOF
+Usage: $(basename "$0") <path/to/script.py>
+
+Run a Python file as a module using wpy.
+
+This script:
+  - Removes the ".py" extension from the given file path.
+  - Replaces slashes (/) with dots (.).
+  - Runs the file as a module via "wpy -m".
+
+Examples:
+  $(basename "$0") src/tools/test_script.py
+      → wpy -m src.tools.test_script
+
+  $(basename "$0") myscript.py
+      → wpy -m myscript
+
+EOF
+  exit 0
+fi
+
+mod_path="${1%.py}"          # remove .py extension
+mod_path="${mod_path//\//.}" # replace slashes with dots
+wpy -m "$mod_path"
