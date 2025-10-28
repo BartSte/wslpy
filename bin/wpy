@@ -5,9 +5,9 @@ usage() {
     cat <<'EOF'
 Usage: wpy [options] <command>
 
-Run a Windows Python from WSL. If WPY cannot be resolved, it is an error.
+Run a Windows Python from WSL. If WIN_PY cannot be resolved, it is an error.
 
-WPY Path to python.exe
+WIN_PY Path to python.exe
 
 Options:
   --wpy-help   Show help and exit
@@ -18,7 +18,7 @@ EOF
 }
 
 # ---------- flags ----------
-py="${WPY:-}"
+py="${WIN_PY:-}"
 debug=/dev/null
 mode="run"
 argv=()
@@ -42,7 +42,7 @@ if ! grep -qi microsoft /proc/version 2>/dev/null; then
     echo "Not running in WSL" >"$debug"
     exit 1
 elif [[ -z "$py" ]]; then
-    echo "WPY is not set" >/dev/stderr
+    echo "WIN_PY is not set" >/dev/stderr
     exit 1
 elif [[ ! -e "$py" ]]; then
     echo "Failed to resolve $py" >/dev/stderr
