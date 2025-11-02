@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# wbash - Git-Bash launcher for WSL
+#
+# Default: open Git Bash inside the current terminal
+# -w / --window: open native Git Bash in a new Windows window
+#
+# Both modes start in the current working directory, including UNC paths.
+
+set -euo pipefail
+
+# --- configuration (can be overridden via environment) ---
+: "${GIT_WIN_DIR:=/mnt/c/Program Files/Git}"
+: "${GIT_BIN_BASH_WIN:=C:\\Program Files\\Git\\bin\\bash.exe}"
+: "${GIT_BASH_EXE_PATH:=/mnt/c/Program Files/Git/git-bash.exe}"
+
+show_help() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  -w, --window    Open native Git Bash in a new Windows window
+  -h, --help      Show this help text
+
+Both modes start in the current working directory.
+Environment:
+  GIT_WIN_DIR     Path to Git for Windows (default: ${GIT_WIN_DIR})
+EOF
+}
+
+MODE="term"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -w|--window) MODE="window"; shift ;;
+    -h|--help) show_help; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "Unknown option: $1" >&2; show_help; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+to_windows_path() {
+  wslpath -w "$1" 2>/dev/null || echo "$1"
+}
+CURRENT_DIR_WIN="$(to_windows_path "$PWD")"
+
+# PowerShell escaped version for safety
+CURRENT_DIR_PS="${CURRENT_DIR_WIN//\\/\\\\}"
+
+if [[ "$MODE" == "window" ]]; then
+  # Launch new native Git Bash window
+  if [[ -x "$GIT_BASH_EXE_PATH" ]]; then
+    "$GIT_BASH_EXE_PATH" --cd="$CURRENT_DIR_WIN" & disown >/dev/null 2>&1 || true
+    exit 0
+  fi
+
+  echo "git-bash.exe not found in $GIT_WIN_DIR" >&2
+  exit 1
+else
+  # Launch Git Bash *inside* this terminal using PowerShell
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+      "Set-Location '$CURRENT_DIR_WIN'; Start-Process -NoNewWindow '${GIT_BIN_BASH_WIN}' -Wait"
+    exit $?
+  fi
+
+  # Fallback: run bash.exe directly if PowerShell unavailable
+  if [[ -x "${GIT_WIN_DIR}/bin/bash.exe" ]]; then
+    "${GIT_WIN_DIR}/bin/bash.exe"
+    exit $?
+  fi
+
+  echo "Could not launch Git Bash. Ensure PowerShell or Git for Windows is installed." >&2
+  exit 1
+fi

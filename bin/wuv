@@ -9,9 +9,9 @@ Run Windows uv.exe from WSL and force a specific project venv. wuv depends on
 wpy.
 
 Environment variables:
-  WPY               Used by wpy
-  WVENV             Path to desired venv (Linux or Windows path)
-  WUV_CONFIG_FILE   Optional uv config file (Linux or Windows path)
+  WIN_PY               Used by wpy
+  WIN_VENV             Path to desired venv (Linux or Windows path)
+  WUV_CONFIG_FILE      Optional uv config file (Linux or Windows path)
 
 
 Options:
@@ -92,7 +92,7 @@ ps_quote() {
 }
 
 # --- resolve paths ---
-venv_win=$(to_win_path "${WVENV:-}")
+venv_win=$(to_win_path "${WIN_VENV:-}")
 python_win=$(to_win_path $(wpy --wpy-path))
 config_win=$(to_win_path "${WUV_CONFIG_FILE:-${UV_CONFIG_FILE:-}}")
 if ! powershell=$(find_powershell); then
