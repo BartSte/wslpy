@@ -1,4 +1,4 @@
-#/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 usage() {
@@ -17,7 +17,29 @@ fi
 prefix="${1:-"$HOME/.local"}"
 bindir="$prefix/bin"
 
-for tool in wpy wuv; do
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source_bindir="$script_dir/bin"
+
+if [[ ! -d "$source_bindir" ]]; then
+    echo "Error: bin directory not found at $source_bindir" >&2
+    exit 1
+fi
+
+tools=()
+
+shopt -s nullglob
+for source_path in "$source_bindir"/*; do
+    [[ -f "$source_path" ]] || continue
+    tools+=("$(basename "$source_path")")
+done
+shopt -u nullglob
+
+if [[ ${#tools[@]} -eq 0 ]]; then
+    echo "No tools found in $source_bindir" >&2
+    exit 1
+fi
+
+for tool in "${tools[@]}"; do
     target="$bindir/$tool"
     if [[ -e "$target" ]]; then
         rm -f "$target"
@@ -27,4 +49,4 @@ for tool in wpy wuv; do
     fi
 done
 
-echo "Finished uninstalling wpy and wuv from $bindir"
+echo "Finished uninstalling ${#tools[@]} tool(s) from $bindir"

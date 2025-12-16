@@ -17,9 +17,31 @@ fi
 prefix="${1:-"$HOME/.local"}"
 bindir="$prefix/bin"
 
-install -d "$bindir"
-install -m 755 bin/wpy "$bindir/wpy"
-install -m 755 bin/wuv "$bindir/wuv"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source_bindir="$script_dir/bin"
 
-echo "Installed wpy and wuv to $bindir"
+if [[ ! -d "$source_bindir" ]]; then
+    echo "Error: bin directory not found at $source_bindir" >&2
+    exit 1
+fi
+
+install -d "$bindir"
+
+shopt -s nullglob
+installed_tools=()
+for source_path in "$source_bindir"/*; do
+    [[ -f "$source_path" ]] || continue
+    tool_name="$(basename "$source_path")"
+    install -m 755 "$source_path" "$bindir/$tool_name"
+    installed_tools+=("$tool_name")
+    echo "Installed $tool_name to $bindir"
+done
+shopt -u nullglob
+
+if [[ ${#installed_tools[@]} -eq 0 ]]; then
+    echo "No tools found in $source_bindir" >&2
+    exit 1
+fi
+
+echo "Installed ${#installed_tools[@]} tool(s) to $bindir"
 echo "Ensure $bindir is on your PATH."
