@@ -15,13 +15,15 @@ Environment variables:
 
 
 Options:
-  --wuv-help   Show help and exit
-  --wuv-debug  Log debug to stderr
+  --wuv-help        Show help and exit
+  --wuv-debug       Log debug to stderr
+  --wuv-fallback    Fallback to WSL uv when WIN_VENV is missing
 EOF
 }
 
 # --- flags ---
 debug=/dev/null
+wuv_fallback=false
 args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +32,7 @@ while [[ $# -gt 0 ]]; do
         exit 0
         ;;
     --wuv-debug) debug=/dev/stderr ;;
+    --wuv-fallback) wuv_fallback=true ;;
     *) args+=("$1") ;;
     esac
     shift
@@ -91,8 +94,29 @@ ps_quote() {
     printf "'%s'" "$s"
 }
 
+venv="${WIN_VENV:-}"
+venv_exists=false
+if [[ -n "$venv" ]]; then
+    if is_win_path "$venv"; then
+        if venv_linux=$(wslpath -u "$venv" 2>/dev/null); then
+            if [[ -d "$venv_linux" ]]; then
+                venv_exists=true
+            fi
+        fi
+    else
+        if [[ -d "$venv" ]]; then
+            venv_exists=true
+        fi
+    fi
+fi
+
+if [[ "$venv_exists" == false && "$wuv_fallback" == true ]]; then
+    echo "Falling back to uv" >"$debug"
+    exec uv "${args[@]}"
+fi
+
 # --- resolve paths ---
-venv_win=$(to_win_path "${WIN_VENV:-}")
+venv_win=$(to_win_path "$venv")
 python_win=$(to_win_path $(wpy --wpy-path))
 config_win=$(to_win_path "${WUV_CONFIG_FILE:-${UV_CONFIG_FILE:-}}")
 if ! powershell=$(find_powershell); then
