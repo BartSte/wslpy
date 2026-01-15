@@ -126,7 +126,9 @@ fi
 
 # --- build command string for PowerShell ---
 ps=()
-ps+=("\$env:UV_CONFIG_FILE=\"$config_win\";")
+if [[ -n "$config_win" ]]; then
+    ps+=("\$env:UV_CONFIG_FILE=\"$config_win\";")
+fi
 ps+=("\$env:UV_PROJECT_ENVIRONMENT=\"${venv_win}\";")
 ps+=("\$env:UV_PYTHON=\"${python_win}\";")
 ps+=("& uv")
