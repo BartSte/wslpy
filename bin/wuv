@@ -12,18 +12,44 @@ Environment variables:
   WIN_PY               Used by wpy
   WIN_VENV             Path to desired venv (Linux or Windows path)
   WUV_CONFIG_FILE      Optional uv config file (Linux or Windows path)
+  WUV_GIT_SAFE_DIRECTORY
+                       git safe.directory entry for this process tree.
+                       Defaults to `*`. Accepts `*`, a Linux path, a Windows
+                       path, or a path ending in `/*` to trust all repos under
+                       that directory.
+  WUV_DISABLE_GIT_SAFE_DIRECTORY
+                       Set to `1` or `true` to disable the default git
+                       safe.directory injection.
+  WUV_IGNORE_DUBIOUS_OWNER
+                       Defaults to `1`. When enabled, wuv sets
+                       `SETUPTOOLS_SCM_IGNORE_DUBIOUS_OWNER=1` in the Windows
+                       process tree so setuptools_scm/vcs_versioning builds do
+                       not fail on WSL-backed repos.
 
 
 Options:
-  --wuv-help        Show help and exit
-  --wuv-debug       Log debug to stderr
-  --wuv-fallback    Fallback to WSL uv when WIN_VENV is missing
+  --wuv-help                      Show help and exit
+  --wuv-debug                     Log debug to stderr
+  --wuv-fallback                  Fallback to WSL uv when WIN_VENV or WIN_PY is missing
+  --wuv-git-safe-directory <dir>  Inject a temporary git safe.directory entry
+  --wuv-no-git-safe-directory     Disable git safe.directory injection
+  --wuv-no-ignore-dubious-owner   Do not set SETUPTOOLS_SCM_IGNORE_DUBIOUS_OWNER
 EOF
 }
 
 # --- flags ---
 debug=/dev/null
 wuv_fallback=false
+git_safe_directory="${WUV_GIT_SAFE_DIRECTORY:-*}"
+git_safe_directory_enabled=true
+case "${WUV_DISABLE_GIT_SAFE_DIRECTORY:-}" in
+1 | true | TRUE | yes | YES) git_safe_directory_enabled=false ;;
+esac
+ignore_dubious_owner_value="${SETUPTOOLS_SCM_IGNORE_DUBIOUS_OWNER:-${WUV_IGNORE_DUBIOUS_OWNER:-1}}"
+ignore_dubious_owner_enabled=true
+case "$ignore_dubious_owner_value" in
+0 | false | FALSE | no | NO) ignore_dubious_owner_enabled=false ;;
+esac
 args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -33,6 +59,17 @@ while [[ $# -gt 0 ]]; do
         ;;
     --wuv-debug) debug=/dev/stderr ;;
     --wuv-fallback) wuv_fallback=true ;;
+    --wuv-git-safe-directory)
+        [[ $# -ge 2 ]] || {
+            echo "--wuv-git-safe-directory requires a value" >&2
+            exit 2
+        }
+        git_safe_directory_enabled=true
+        git_safe_directory="$2"
+        shift
+        ;;
+    --wuv-no-git-safe-directory) git_safe_directory_enabled=false ;;
+    --wuv-no-ignore-dubious-owner) ignore_dubious_owner_enabled=false ;;
     *) args+=("$1") ;;
     esac
     shift
@@ -45,7 +82,7 @@ if ! grep -qi microsoft /proc/version 2>/dev/null; then
 fi
 
 # --- helpers ---
-is_win_path() { [[ "$1" =~ ^([A-Za-z]:\\|\\\\) ]]; }
+is_win_path() { [[ "$1" =~ ^([A-Za-z]:[\\/]|\\\\|//) ]]; }
 
 to_win_path() {
     # return when $p is empty
@@ -56,6 +93,46 @@ to_win_path() {
     else
         wslpath -w -- "$p"
     fi
+}
+
+normalize_git_safe_directory() {
+    local p="${1:-}"
+    local suffix=""
+    local win_path=""
+
+    [[ -z "$p" ]] && return
+    if [[ "$p" == "*" ]]; then
+        printf '%s' "$p"
+        return
+    fi
+
+    if [[ "$p" == */\* ]]; then
+        suffix='/*'
+        p="${p%/\*}"
+    fi
+
+    if [[ "$p" == //* ]]; then
+        win_path="$p"
+    elif is_win_path "$p"; then
+        win_path="$p"
+    else
+        win_path=$(wslpath -w -- "$p")
+    fi
+
+    win_path="${win_path//\\//}"
+    printf '%s%s' "$win_path" "$suffix"
+}
+
+create_git_shim() {
+    local safe_dir="$1"
+    local shim_dir
+    local shim_file
+
+    shim_dir=$(mktemp -d "${TMPDIR:-/tmp}/wuv-git.XXXXXX")
+    shim_file="$shim_dir/git.cmd"
+
+    printf '@echo off\r\n"git.exe" -c "safe.directory=%s" %%*\r\n' "$safe_dir" >"$shim_file"
+    printf '%s' "$shim_dir"
 }
 
 find_powershell() {
@@ -90,7 +167,7 @@ find_powershell() {
 ps_quote() {
     # PowerShell single-quote escape: ' -> ''
     local s="$1"
-    s="${s//\'/\'}" # bash replace doesn't handle backrefs; this doubles quotes
+    s="${s//\'/$'\047\047'}"
     printf "'%s'" "$s"
 }
 
@@ -117,8 +194,25 @@ fi
 
 # --- resolve paths ---
 venv_win=$(to_win_path "$venv")
-python_win=$(to_win_path $(wpy --wpy-path))
+if ! python_linux=$(wpy --wpy-path); then
+    if [[ "$wuv_fallback" == true ]]; then
+        echo "Failed to resolve Windows python via wpy; falling back to uv" >"$debug"
+        exec uv "${args[@]}"
+    fi
+    echo "Unable to resolve Windows python via wpy" >&2
+    exit 1
+fi
+python_win=$(to_win_path "$python_linux")
 config_win=$(to_win_path "${WUV_CONFIG_FILE:-${UV_CONFIG_FILE:-}}")
+git_shim_dir=""
+git_shim_win=""
+if [[ "$git_safe_directory_enabled" == true ]]; then
+    git_safe_directory=$(normalize_git_safe_directory "$git_safe_directory")
+    git_shim_dir=$(create_git_shim "$git_safe_directory")
+    git_shim_win=$(to_win_path "$git_shim_dir")
+else
+    git_safe_directory=""
+fi
 if ! powershell=$(find_powershell); then
     echo "Unable to locate powershell.exe or pwsh.exe" >&2
     exit 1
@@ -129,6 +223,12 @@ ps=()
 if [[ -n "$config_win" ]]; then
     ps+=("\$env:UV_CONFIG_FILE=\"$config_win\";")
 fi
+if [[ -n "$git_shim_win" ]]; then
+    ps+=("\$env:PATH=\"$git_shim_win;\" + \$env:PATH;")
+fi
+if [[ "$ignore_dubious_owner_enabled" == true ]]; then
+    ps+=("\$env:SETUPTOOLS_SCM_IGNORE_DUBIOUS_OWNER=\"${ignore_dubious_owner_value}\";")
+fi
 ps+=("\$env:UV_PROJECT_ENVIRONMENT=\"${venv_win}\";")
 ps+=("\$env:UV_PYTHON=\"${python_win}\";")
 ps+=("& uv")
@@ -137,8 +237,20 @@ ps_cmd="${ps[*]}"
 
 echo "venv_win: $venv_win" >"$debug"
 [[ -n "$config_win" ]] && echo "config_win: $config_win" >"$debug"
+[[ -n "$git_safe_directory" ]] && echo "git_safe_directory: $git_safe_directory" >"$debug"
+if [[ "$ignore_dubious_owner_enabled" == true ]]; then
+    echo "ignore_dubious_owner: $ignore_dubious_owner_value" >"$debug"
+fi
 echo "powershell: $powershell" >"$debug"
 echo "pwsh cmd: $ps_cmd" >"$debug"
 
 # --- execute ---
-exec "$powershell" -NoProfile -Command "$ps_cmd"
+cleanup() {
+    if [[ -n "$git_shim_dir" && -d "$git_shim_dir" ]]; then
+        rm -rf -- "$git_shim_dir"
+    fi
+}
+trap cleanup EXIT
+
+"$powershell" -NoProfile -Command "$ps_cmd"
+exit $?
